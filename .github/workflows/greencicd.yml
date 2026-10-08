@@ -58,7 +58,7 @@ jobs:
       - name: Send telemetry to GreenCICD
         run: |
           curl -X POST \
-            "https://nonfermentable-bioclimatological-monroe.ngrok-free.dev/telemetry/github" \
+            "https://greencicd-backend.onrender.com/telemetry/github" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{
