@@ -1,0 +1,72 @@
+name: GreenCICD Telemetry
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  telemetry:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start telemetry collection
+        run: |
+          (
+            while true
+            do
+              CPU=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
+              MEMORY=$(free | awk '/Mem:/ {printf "%.2f", $3/$2 * 100}')
+              echo "$CPU $MEMORY" >> telemetry.log
+              sleep 1
+            done
+          ) &
+          echo $! > telemetry.pid
+          echo "START_TIME=$(date +%s)" >> $GITHUB_ENV
+
+      - name: Simulate CI work
+        run: |
+          echo "GreenCICD test pipeline started"
+          sleep 15
+          echo "GreenCICD test pipeline completed"
+
+      - name: Calculate telemetry
+        run: |
+          PID=$(cat telemetry.pid)
+          kill "$PID" 2>/dev/null || true
+
+          AVG_CPU=$(awk '{sum += $1} END {if (NR > 0) print sum/NR; else print 0}' telemetry.log)
+          AVG_MEMORY=$(awk '{sum += $2} END {if (NR > 0) print sum/NR; else print 0}' telemetry.log)
+
+          END_TIME=$(date +%s)
+          DURATION_SECONDS=$((END_TIME - START_TIME))
+          DURATION_MINUTES=$(awk "BEGIN {printf \"%.6f\", $DURATION_SECONDS / 60.0}")
+
+          echo "Average CPU: $AVG_CPU%"
+          echo "Average Memory: $AVG_MEMORY%"
+          echo "Duration Minutes: $DURATION_MINUTES"
+
+          echo "AVG_CPU=$AVG_CPU" >> $GITHUB_ENV
+          echo "AVG_MEMORY=$AVG_MEMORY" >> $GITHUB_ENV
+          echo "DURATION_MINUTES=$DURATION_MINUTES" >> $GITHUB_ENV
+
+      - name: Send telemetry to GreenCICD
+        run: |
+          curl -X POST \
+            "https://nonfermentable-bioclimatological-monroe.ngrok-free.dev/telemetry/github" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "repo_full_name": "${{ github.repository }}",
+              "github_run_id": "${{ github.run_id }}",
+              "cpu_usage": '"$AVG_CPU"',
+              "memory_usage": '"$AVG_MEMORY"',
+              "duration_minutes": '"$DURATION_MINUTES"'
+            }'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
